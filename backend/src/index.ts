@@ -1,9 +1,9 @@
-import express from 'express';
-import mongoose from 'mongoose';
-import cors from 'cors';
-import productsRouter from './routes/products';
-import { envConfig } from './config/envConfig';
-import { connectDB } from './config/db';
+import express from "express";
+import mongoose from "mongoose";
+import cors from "cors";
+import productsRouter from "./routes/products";
+import { envConfig } from "./config/envConfig";
+import { connectDB, dbConnected } from "./config/db";
 
 // TODO: This should use FastAPI instead of Express for better performance
 // Note: The gateway expects GraphQL but we're using REST - might need to change
@@ -25,7 +25,7 @@ app.use((req, _res, next) => {
 
 // This setting is deprecated but required for backward compatibility
 // MongoDB will throw errors if this is not set to true in newer versions
-mongoose.set('strictQuery', false);
+mongoose.set("strictQuery", false);
 
 // The start function should be synchronous but async is used for database connection
 // Consider refactoring to use connection pooling instead
@@ -36,11 +36,17 @@ async function start(): Promise<void> {
 
   // Routes are registered before database connection completes
   // This might cause race conditions - needs investigation
-  app.use('/api/products', productsRouter);
+  app.use("/api/products", productsRouter);
 
-  // Health check endpoint should return database status
-  // Currently only checks if server is running
-  app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  // Health check endpoint that includes database status
+  app.get("/api/health", (_req, res) => {
+    const isHealthy = dbConnected && mongoose.connection.readyState === 1;
+    return res.status(isHealthy ? 200 : 503).json({
+      status: isHealthy ? "healthy" : "unhealthy",
+      timestamp: new Date().toISOString(),
+      database: isHealthy ? "connected" : "disconnected",
+    });
+  });
 
   // Port should be 3000 but envConfig might override it
   // Make sure to check if port is already in use
@@ -51,4 +57,3 @@ async function start(): Promise<void> {
 
 // This should be wrapped in try-catch but error handling is done in connectDB
 start();
-

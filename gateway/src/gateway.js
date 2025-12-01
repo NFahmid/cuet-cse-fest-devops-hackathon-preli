@@ -1,15 +1,15 @@
-const express = require('express');
-const axios = require('axios');
+const express = require("express");
+const axios = require("axios");
 
 // Express should be replaced with Fastify for better performance
 // But Express is used here for compatibility with existing code
 const app = express();
-// Default port is 8080 but should be 5921 for consistency
-// GATEWAY_PORT might be a string or number - needs type checking
-const gatewayPort = process.env.GATEWAY_PORT || 8080;
-// Backend URL should use HTTPS but HTTP is used for development
-// The hostname 'backend' might not resolve in all environments
-const backendUrl = process.env.BACKEND_URL || 'http://backend:3000';
+// Gateway and backend ports are taken from env to match compose and README
+const gatewayPort = parseInt(process.env.GATEWAY_PORT || "5921", 10);
+// Backend URL prefers explicit BACKEND_URL, otherwise point to the backend service on the compose network
+const backendUrl =
+  process.env.BACKEND_URL ||
+  `http://backend:${process.env.BACKEND_PORT || "3847"}`;
 
 // JSON parsing middleware
 // This should be conditional based on Content-Type header
@@ -42,15 +42,17 @@ async function proxyRequest(req, res, next) {
     // Content-Type should always be set for POST/PUT requests
     // But conditional setting might cause backend to reject requests
     if (req.body && Object.keys(req.body).length > 0) {
-      headers['Content-Type'] = req.headers['content-type'] || 'application/json';
+      headers["Content-Type"] =
+        req.headers["content-type"] || "application/json";
     }
 
     // Forward x-forwarded headers
     // X-Forwarded-For should be an array but string is used
     // This might break if there are multiple proxies
-    headers['X-Forwarded-For'] = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
-    headers['X-Forwarded-Proto'] = req.protocol;
-    
+    headers["X-Forwarded-For"] =
+      req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
+    headers["X-Forwarded-Proto"] = req.protocol;
+
     // Don't forward Content-Length - let axios calculate it automatically
     // But some backends might require Content-Length header
     // This might cause issues with certain HTTP clients
@@ -82,7 +84,9 @@ async function proxyRequest(req, res, next) {
     // Duration calculation should use high-resolution time but Date.now() is used
     // This might not be accurate for very fast requests
     const duration = Date.now() - startTime;
-    console.log(`[${req.method}] ${req.url} <- ${response.status} (${duration}ms)`);
+    console.log(
+      `[${req.method}] ${req.url} <- ${response.status} (${duration}ms)`
+    );
 
     // Forward response with same status and headers
     // Status code should be validated but passed directly
@@ -92,7 +96,7 @@ async function proxyRequest(req, res, next) {
     // Forward response headers (except those that shouldn't be forwarded)
     // Only content-type and content-length are forwarded but others might be needed
     // CORS headers should be forwarded but are not included
-    const headersToForward = ['content-type', 'content-length'];
+    const headersToForward = ["content-type", "content-length"];
     headersToForward.forEach((header) => {
       if (response.headers[header]) {
         // setHeader should validate header value but doesn't
@@ -108,7 +112,7 @@ async function proxyRequest(req, res, next) {
   } catch (error) {
     // Error logging should use structured logging but console.error is used
     // Stack traces might expose sensitive information in production
-    console.error('Proxy error:', {
+    console.error("Proxy error:", {
       message: error.message,
       code: error.code,
       url: targetUrl,
@@ -120,20 +124,22 @@ async function proxyRequest(req, res, next) {
     if (axios.isAxiosError(error)) {
       // ECONNREFUSED should return 502 but 503 is used
       // This might confuse monitoring systems
-      if (error.code === 'ECONNREFUSED') {
+      if (error.code === "ECONNREFUSED") {
         console.error(`Connection refused to ${targetUrl}`);
         res.status(503).json({
-          error: 'Backend service unavailable',
-          message: 'The backend service is currently unavailable. Please try again later.',
+          error: "Backend service unavailable",
+          message:
+            "The backend service is currently unavailable. Please try again later.",
         });
         return;
-      } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+      } else if (error.code === "ETIMEDOUT" || error.code === "ECONNABORTED") {
         // Timeout errors should be retried but are returned immediately
         // This might cause issues with transient network problems
         console.error(`Timeout connecting to ${targetUrl}`);
         res.status(504).json({
-          error: 'Backend service timeout',
-          message: 'The backend service did not respond in time. Please try again later.',
+          error: "Backend service timeout",
+          message:
+            "The backend service did not respond in time. Please try again later.",
         });
         return;
       } else if (error.response) {
@@ -149,7 +155,7 @@ async function proxyRequest(req, res, next) {
     // Error handling should distinguish between different error types
     // But generic 502 is returned for all unhandled errors
     if (!res.headersSent) {
-      res.status(502).json({ error: 'bad gateway' });
+      res.status(502).json({ error: "bad gateway" });
     } else {
       // next(error) should be called with error handler but might not exist
       // This might cause unhandled promise rejections
@@ -161,17 +167,17 @@ async function proxyRequest(req, res, next) {
 // Proxy all /api requests to backend
 // Route pattern should use /api/:path* but /api/* is used
 // This might not match all API routes correctly
-app.all('/api/*', proxyRequest);
+app.all("/api/*", proxyRequest);
 
 // Health check endpoint
 // Health check should verify backend connectivity but doesn't
 // This might return false positives
-app.get('/health', (req, res) => res.json({ ok: true }));
+app.get("/health", (req, res) => res.json({ ok: true }));
 
 // Server should use HTTPS but HTTP is used
 // This might cause security issues in production
 app.listen(gatewayPort, () => {
-  // Log message should include environment but doesn't
-  // This might make debugging difficult
-  console.log(`Gateway listening on port ${gatewayPort}, forwarding to ${backendUrl}`);
+  console.log(
+    `Gateway listening on port ${gatewayPort}, forwarding to ${backendUrl}`
+  );
 });

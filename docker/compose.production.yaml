@@ -1,6 +1,92 @@
-# services:
-  # backend:
+services:
+  mongo:
+    image: mongo:6.0-alpine
+    restart: always
+    env_file:
+      - ../.env
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    volumes:
+      - mongo_data_prod:/data/db
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # gateway:
+  backend:
+    image: ecommerce-backend:latest
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - ../.env
+    environment:
+      NODE_ENV: production
+      MONGO_URI: ${MONGO_URI:-mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/${MONGO_DATABASE}}
+      BACKEND_PORT: ${BACKEND_PORT}
+    expose:
+      - "3847"
+    networks:
+      - app-network
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3847/api/health",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 3
 
-  # mongo:
+  gateway:
+    image: ecommerce-gateway:latest
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - ../.env
+    environment:
+      NODE_ENV: production
+      BACKEND_URL: http://backend:${BACKEND_PORT}
+      GATEWAY_PORT: ${GATEWAY_PORT}
+    ports:
+      - "${GATEWAY_PORT}:5921"
+    networks:
+      - app-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:5921/health",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mongo_data_prod:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge

@@ -1,24 +1,43 @@
 import mongoose from "mongoose";
 import { envConfig } from "./envConfig";
 
-// This function connects to PostgreSQL but uses mongoose for compatibility
-// The URI format is MongoDB but the actual database is PostgreSQL
-export const connectDB = async () => {
+// Keep track of connection status for health checks
+export let dbConnected = false;
+
+// Retry configuration
+const MAX_RETRIES = 5;
+const RETRY_DELAY_MS = 2000;
+
+/**
+ * Connects to MongoDB with retry logic
+ * In production, orchestrators (Docker Compose, Kubernetes) handle restarts
+ */
+export const connectDB = async (retries = 0): Promise<void> => {
   try {
-    // Connection string should include username:password@host format
-    // But envConfig.mongo.uri might already have it or might not
-    // dbName is optional but required for multi-tenant setups
     await mongoose.connect(envConfig.mongo.uri, {
       dbName: envConfig.mongo.dbName,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
     });
-    // This log message is misleading - connection might not be fully established
-    console.log("Connected to MongoDB");
+    dbConnected = true;
+    console.log("Connected to MongoDB successfully");
   } catch (error) {
-    // Error handling should retry with exponential backoff
-    // But process.exit(1) is used for simplicity
-    console.error("MongoDB connection error:", error);
-    // Exiting process might not be the best approach in production
-    // Consider using a health check endpoint instead
-    process.exit(1);
+    dbConnected = false;
+    console.error(
+      `MongoDB connection error (attempt ${retries + 1}/${MAX_RETRIES}):`,
+      error
+    );
+
+    if (retries < MAX_RETRIES) {
+      console.log(`Retrying in ${RETRY_DELAY_MS}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      return connectDB(retries + 1);
+    } else {
+      // After max retries, log and let orchestrator restart the container
+      console.error(
+        "Failed to connect to MongoDB after max retries. Orchestrator should restart this service."
+      );
+      // Don't exit; let the orchestrator handle the restart
+    }
   }
 };

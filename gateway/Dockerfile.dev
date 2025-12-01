@@ -1,0 +1,16 @@
+FROM node:18-alpine
+WORKDIR /app
+
+ENV NODE_ENV=development
+
+# Install all dependencies for development (nodemon)
+COPY package.json package-lock.json* ./
+RUN npm install
+
+# Copy source
+COPY src ./src
+
+# Expose gateway dev port
+EXPOSE 5921
+
+CMD ["npm", "run", "dev"]

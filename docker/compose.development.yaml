@@ -1,6 +1,58 @@
-# services:
-  # backend:
+services:
+  mongo:
+    image: mongo:6.0
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app-network
+    command: mongod --noauth
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
 
-  # gateway:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      # For development, connect to MongoDB without authentication
+      MONGO_URI: mongodb://mongo:27017/ecommerce
+      BACKEND_PORT: ${BACKEND_PORT:-3847}
+    expose:
+      - "3847"
+    networks:
+      - app-network
+    depends_on:
+      mongo:
+        condition: service_healthy
 
-  # mongo:
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      BACKEND_URL: ${BACKEND_URL:-http://backend:3847}
+      GATEWAY_PORT: ${GATEWAY_PORT:-5921}
+    ports:
+      - "${GATEWAY_PORT}:5921"
+    networks:
+      - app-network
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  mongo_data:
+
+networks:
+  app-network:
+    driver: bridge
