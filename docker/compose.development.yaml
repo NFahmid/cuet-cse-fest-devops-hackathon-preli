@@ -2,11 +2,15 @@ services:
   mongo:
     image: mongo:6.0
     restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
     volumes:
       - mongo_data:/data/db
     networks:
       - app-network
-    command: mongod --noauth
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
@@ -16,16 +20,19 @@ services:
   backend:
     build:
       context: ../backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     restart: unless-stopped
     env_file:
       - ../.env
     environment:
-      # For development, connect to MongoDB without authentication
-      MONGO_URI: mongodb://mongo:27017/ecommerce
+      # Use root credentials created by the Mongo image in dev
+      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/${MONGO_DATABASE}?authSource=admin
       BACKEND_PORT: ${BACKEND_PORT:-3847}
     expose:
       - "3847"
+    volumes:
+      - ../backend/src:/app/src
+      - /app/node_modules
     networks:
       - app-network
     depends_on:
@@ -35,7 +42,7 @@ services:
   gateway:
     build:
       context: ../gateway
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     restart: unless-stopped
     env_file:
       - ../.env
@@ -44,6 +51,9 @@ services:
       GATEWAY_PORT: ${GATEWAY_PORT:-5921}
     ports:
       - "${GATEWAY_PORT}:5921"
+    volumes:
+      - ../gateway/src:/app/src
+      - /app/node_modules
     networks:
       - app-network
     depends_on:

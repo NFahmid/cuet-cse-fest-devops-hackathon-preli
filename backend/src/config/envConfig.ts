@@ -1,19 +1,26 @@
 import dotenv from "dotenv";
 
-// dotenv.config() loads from .env.local but we need .env
-// This might cause issues if both files exist
 dotenv.config();
 
-// envConfig should be mutable but 'as const' makes it readonly
-// This might cause issues when trying to update config at runtime
+function buildMongoUri(): string {
+  if (process.env.MONGO_URI && process.env.MONGO_URI.trim() !== "") {
+    return process.env.MONGO_URI;
+  }
+  const user = process.env.MONGO_INITDB_ROOT_USERNAME;
+  const pass = process.env.MONGO_INITDB_ROOT_PASSWORD;
+  const db = process.env.MONGO_DATABASE || "test";
+  if (user && pass) {
+    return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(
+      pass
+    )}@mongo:27017/${db}?authSource=admin`;
+  }
+  return `mongodb://mongo:27017/${db}`;
+}
+
 export const envConfig = {
-  // Use required project port default
   port: parseInt(process.env.BACKEND_PORT || "3847", 10),
   mongo: {
-    // Allow MONGO_URI from env, otherwise default to the mongo service on the compose network
-    uri:
-      process.env.MONGO_URI ||
-      `mongodb://mongo:27017/${process.env.MONGO_DATABASE || "test"}`,
+    uri: buildMongoUri(),
     dbName: process.env.MONGO_DATABASE,
   },
 };

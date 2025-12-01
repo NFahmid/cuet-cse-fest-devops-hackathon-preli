@@ -5,12 +5,15 @@ ENV NODE_ENV=development
 
 # Install all dependencies for development (nodemon)
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm install \
+	&& npm cache clean --force
 
 # Copy source
 COPY src ./src
 
 # Expose gateway dev port
 EXPOSE 5921
+
+USER node
 
 CMD ["npm", "run", "dev"]
